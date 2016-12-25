@@ -1,0 +1,13 @@
+{
+    "spotify": {
+        "api_url": ""
+        "client_id": "",
+        "client_secret": ""
+    },
+    "discogs": {
+        "token": ""
+    },
+    "gracenote": {
+        "client_id": ""
+    }
+}
