@@ -10,6 +10,7 @@ import json
 import requests
 import lxml.etree as etree
 import itertools
+import argparse
 
 config = json.load(open('api_config.json'))
 
@@ -19,6 +20,11 @@ SPOTIPY_REDIRECT_URI = redirect_uri = 'https://bitbucket.org/atandy/spotify_api'
 
 scope = 'user-library-read'
 username = '122681512'
+
+# Read in args -- if user wants to use CSV rather than querying Spotify directly
+parser = argparse.ArgumentParser(description='Command line parameters')
+parser.add_argument('-f', '--file', nargs=1, type=str, help="the file you want to upload")
+args = vars(parser.parse_args())
 
 #token = util.prompt_for_user_token(username, scope)
 token = util.prompt_for_user_token(username, scope, client_id, client_secret, redirect_uri)
@@ -73,7 +79,7 @@ def get_saved_songs():
         offset_val += 50
 
     print saved_songs_df
-    saved_songs_df.to_csv('df_saved_songs.csv', encoding='utf-8', index=False)
+    return saved_songs_df
 
 def remove_duplicates(orig_list):
     new_list = []
@@ -83,52 +89,62 @@ def remove_duplicates(orig_list):
     return new_list
 
 # Function to pull mood data from Gracenote API
-def get_data(saved_songs_df, row):
+def get_data(saved_songs_df, row, moods_or_genres):
     song = saved_songs_df.name.iloc[row]
     artist = saved_songs_df.artist.iloc[row]
     added_at = saved_songs_df.added_at.iloc[row]
     r = g.get_track(song, artist)
-    moods = r['moods']
-    moods = remove_duplicates(moods)
-    return [song, artist, added_at, moods]
+    moods_or_genres_list = r[str(moods_or_genres)]
+    print 'moods_or_genres_list: ', moods_or_genres_list
+    moods_or_genres_list = remove_duplicates(moods_or_genres_list)
+    return [song, artist, added_at, moods_or_genres_list]
+
+def get_mood_genre_data(saved_songs_df, moods_or_genres):
+
+    full_df = pd.DataFrame()
+    for row in range(0, len(saved_songs_df)):
+
+        # Get data from Gracenote
+        song, artist, added_at, m_ds = get_data(saved_songs_df, row, moods_or_genres)
+        for el in m_ds:
+            if ' / ' in el:
+                el1 = el.split(' / ')[0]
+                el2 = el.split(' / ')[1]
+                row = pd.DataFrame({el1:[1],el2:[1],'added_at':[added_at]})
+            else:
+                row = pd.DataFrame({el:[1], 'added_at':[added_at]})
+            full_df = pd.concat([full_df,row], axis=0)
+        print 'appended: \n', full_df
+
+    # Get moods/genres per month
+    month_df = full_df.groupby(['added_at']).sum().reset_index()
+    month_df.to_csv('month_df.csv', encoding='utf-8', index=False)
+    return month_df
 
 g = gracenote_api.Gracenote()
 g.register()
 
-#saved_songs_df = get_saved_songs()
+# If there is a csv to use (and we don't wanna query each time), use it
+if len(sys.argv) > 1:
+    print 'User has passed a file'
+    file = args['file'][0]
+    full_df = pd.read_csv(file)
+else:
+    print 'We will query the Spotify API'
+    full_df = get_saved_songs()
+
+# Reading to csv and reingesting to convert to utf-8
+full_df.to_csv('df_saved_songs.csv', encoding='utf-8', index=False)
 saved_songs_df = pd.read_csv('df_saved_songs.csv')
 
-# For each month, create count of moods
+# Map days to months
 saved_songs_df['added_at'] = pd.to_datetime(saved_songs_df['added_at'], format='%Y-%m-%d')
 saved_songs_df['added_at'] = saved_songs_df.added_at.map(lambda x: x.strftime('%Y-%m'))
 
-date_mood_df = pd.DataFrame()
-for row in range(0, len(saved_songs_df)):
+# Get mood and genre data on a month-by-month basis
+month_mood_df = get_mood_genre_data(saved_songs_df, 'moods')
+month_genre_df = get_mood_genre_data(saved_songs_df, 'genres')
+month_mood_df.to_csv('month_mood_df.csv', encoding='utf-8', index=False)
+month_genre_df.to_csv('month_genre_df.csv', encoding='utf-8', index=False)
 
-    # Get data from Gracenote    
-    song, artist, added_at, moods = get_data(saved_songs_df, row)
-    for el in moods:
-        if ' / ' in el:
-            el1 = el.split(' / ')[0]
-            el2 = el.split(' / ')[1]
-            row = pd.DataFrame({el1:[1],el2:[1],'added_at':[added_at]})
-        else:
-            row = pd.DataFrame({el:[1], 'added_at':[added_at]})
-        date_mood_df = pd.concat([date_mood_df,row], axis=0)
-        print 'appended: \n', date_mood_df
-
-# Get moods per month
-month_df = date_mood_df.groupby(['added_at']).sum().reset_index()
-#month_df['total_moods'] = date_mood_df.sum(axis=1).fillna(0)
-if 'Unnamed: 0' in month_df:
-    del month_df['Unnamed: 0']
-print 'month_df: \n', month_df
-month_df.to_csv('month_df.csv', index=False)
-
-# Print some stats about top moods per month
-month_df["moods_per_month"] = month_df.sum(axis=1)
-pct_month_df = month_df.loc[:,"Abstract Beat":"Yearning"] = month_df.loc[:,"Abstract Beat":"Yearning"].div(month_df["moods_per_month"], axis=0).fillna(0) 
-print 'pct_month_df: \n', pct_month_df
-pct_month_df['top_mood_by_pct'] = pct_month_df.idxmax(axis=1)
-pct_month_df = pct_month_df.merge(month_df, how='left')
-print 'top_mood_df: \n', pct_month_df[['added_at','top_mood_by_pct']]
+# Do we want to group genres into larger buckets? (e.g. Pop, Hip Hop, Rock, etc.)
