@@ -6,6 +6,7 @@ axis_vars <- c(
   "Energy" = "energy",
   "Speechiness" = "speechiness",
   "Instrumentalness" = "instrumentalness",
-  "Time Signature" = "time_signature",
-  "Popularity" = "popularity"
+  "Popularity" = "popularity",
+  "Date Added" = "added_at",
+  "Tempo" = "tempo"
 )

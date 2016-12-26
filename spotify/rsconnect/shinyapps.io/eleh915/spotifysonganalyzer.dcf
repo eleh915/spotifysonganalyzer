@@ -1,8 +1,10 @@
 name: spotifysonganalyzer
+title: spotifysonganalyzer
 account: eleh915
 server: shinyapps.io
-bundleId: 620432
+appId: 138918
+bundleId: 660766
 url: https://eleh915.shinyapps.io/spotifysonganalyzer/
-when: 1479699256.13153
+when: 1482730156.73333
 asMultiple: FALSE
 asStatic: FALSE
