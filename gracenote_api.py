@@ -2,7 +2,7 @@ import requests
 import json
 import lxml.etree as etree
 
-config = json.load(open('api_config.json'))['gracenote']
+config = json.load(open('/Users/eleh/spotify/spotifysonganalyzer/api_config.json'))['gracenote']
 
 # This is Tandy's code -- I take no credit
 class Gracenote:

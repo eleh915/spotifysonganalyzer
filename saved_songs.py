@@ -6,28 +6,36 @@ import json
 from datetime import date,timedelta,datetime
 
 import gracenote_api
-import json
 import requests
 import lxml.etree as etree
 import itertools
 import argparse
 
-config = json.load(open('api_config.json'))
+config = json.load(open('/Users/eleh/spotify/spotifysonganalyzer/api_config.json'))
+#config = json.load(open('dcm_api_config.json'))
 
 SPOTIPY_CLIENT_ID = client_id = config['spotify']['client_id']
 SPOTIPY_CLIENT_SECRET = client_secret = config['spotify']['client_secret']
-SPOTIPY_REDIRECT_URI = redirect_uri = 'https://bitbucket.org/atandy/spotify_api'
+#SPOTIPY_REDIRECT_URI = redirect_uri = 'https://bitbucket.org/atandy/spotify_api'
+SPOTIPY_REDIRECT_URI = redirect_uri = 'https://eleh915.shinyapps.io/spotifysonganalyzer/'
 
 scope = 'user-library-read'
 username = '122681512'
+#username = 'daniela_manzi'
+#username = 'lehworthing'
 
 # Read in args -- if user wants to use CSV rather than querying Spotify directly
 parser = argparse.ArgumentParser(description='Command line parameters')
 parser.add_argument('-f', '--file', nargs=1, type=str, help="the file you want to upload")
+parser.add_argument('-t', '--token', nargs=1, type=str, help="your Spotify access token")
+parser.add_argument('-u', '--username', nargs=1, type=str, help="your Spotify username")
 args = vars(parser.parse_args())
 
-#token = util.prompt_for_user_token(username, scope)
-token = util.prompt_for_user_token(username, scope, client_id, client_secret, redirect_uri)
+username = args['username'][0]
+token = args['token'][0]
+print(username)
+print(token)
+#token = util.prompt_for_user_token(username, scope, client_id, client_secret, redirect_uri)
 sp = spotipy.Spotify(auth=token)
 
 def get_saved_songs():
@@ -50,7 +58,6 @@ def get_saved_songs():
             name = track['name']
             artist = track['artists'][0]['name']
             track_img = track['album']['images'][0]['url']
-            print 'track_img: ', track_img
             popularity = track['popularity']
             added_at = item['added_at'].split('T')[0]
             acousticness = audio_feats[0]['acousticness']
@@ -66,19 +73,16 @@ def get_saved_songs():
             time_signature = audio_feats[0]['time_signature']
             valence = audio_feats[0]['valence']
             preview_url = track['preview_url']
-            print 'preview_url: ', preview_url
 
             mini_df = pd.DataFrame({'name': name, 'artist': artist, 'popularity': popularity, 'acousticness': acousticness,
             'danceability': danceability, 'duration_ms': duration_ms, 'energy': energy, 'instrumentalness': instrumentalness,
             'key': key, 'liveness': liveness, 'loudness': loudness, 'speechiness': speechiness, 'tempo': tempo,
             'time_signature': time_signature, 'valence': valence, 'added_at': added_at, 'preview_url': preview_url,
             'track_img': track_img}, index=[0])
-            print 'mini df: ', mini_df
             saved_songs_df = saved_songs_df.append(mini_df)
 
         offset_val += 50
 
-    print saved_songs_df
     return saved_songs_df
 
 def remove_duplicates(orig_list):
@@ -118,20 +122,23 @@ def get_mood_genre_data(saved_songs_df, moods_or_genres):
 
     # Get moods/genres per month
     month_df = full_df.groupby(['added_at']).sum().reset_index()
-    month_df.to_csv('month_df.csv', encoding='utf-8', index=False)
     return month_df
 
 g = gracenote_api.Gracenote()
 g.register()
 
 # If there is a csv to use (and we don't wanna query each time), use it
-if len(sys.argv) > 1:
+'''
+if len(sys.argv) > 3:
     print 'User has passed a file'
     file = args['file'][0]
     full_df = pd.read_csv(file)
 else:
-    print 'We will query the Spotify API'
-    full_df = get_saved_songs()
+'''
+print 'We will query the Spotify API'
+full_df = get_saved_songs()
+#full_df = pd.read_csv('df_saved_songs.csv') # for testing
+print('Got saved songs')
 
 # Reading to csv and reingesting to convert to utf-8
 full_df.to_csv('df_saved_songs.csv', encoding='utf-8', index=False)
@@ -146,5 +153,3 @@ month_mood_df = get_mood_genre_data(saved_songs_df, 'moods')
 month_genre_df = get_mood_genre_data(saved_songs_df, 'genres')
 month_mood_df.to_csv('month_mood_df.csv', encoding='utf-8', index=False)
 month_genre_df.to_csv('month_genre_df.csv', encoding='utf-8', index=False)
-
-# Do we want to group genres into larger buckets? (e.g. Pop, Hip Hop, Rock, etc.)
