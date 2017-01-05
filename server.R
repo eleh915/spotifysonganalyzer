@@ -3,8 +3,19 @@ library(dplyr)
 library(zoo)
 library(googleVis)
 library(data.table)
+library(devtools)
+library(spotifyr)
+library(httr)
+
+set_credentials(client_id = clientID, client_secret = secret, client_redirect_uri = client_redirect_uri)
 
 # FUNCTIONS --------------------------------------------------
+
+# Function to turn NULL values into empty strings
+nullToBlank <- function(x) {
+  x[sapply(x, is.null)] <- ''
+  return(x)
+}
 
 # Filtering to 2016-on and getting day of week info
 date_manipulations = function(spotify_df){
@@ -69,18 +80,21 @@ prettify_df = function(df){
 # SAVED SONGS DATA ------------------------------------------------
 
 # Setting locale to prevent input issues and read in saved songs csv
-Sys.setlocale('LC_ALL','C') 
+#Sys.setlocale('LC_ALL','C')
+#Sys.setenv(PATH = "/anaconda/bin/python")
+Sys.setenv(PATH = "/usr/local/bin")
+#print(system('which python'))
 spotify_df <- read.csv("df_saved_songs.csv")
 print(paste("Original first row: ", spotify_df[1,]))
 spotify_df = date_manipulations(spotify_df)
 
-dow_df <- spotify_df %>% group_by(day_added) %>% summarise(songs_added=n())
+dow_df <- spotify_df %>% group_by(day_added) %>% dplyr::summarise(songs_added=n())
 
 # Get month songs were added & most common months
 spotify_df$month_added <- months(as.Date(spotify_df$added_at))
 spotify_df$month_added <- factor(spotify_df$month_added, levels= c("January", "February", "March", "April", "May", "June",
                                                                    "July", "August", "September", "October", "November", "December"))
-month_df <- spotify_df %>% group_by(month_added) %>% summarise(songs_added_per_month=n())
+month_df <- spotify_df %>% group_by(month_added) %>% dplyr::summarise(songs_added_per_month=n())
 
 # Map key number to major/minor key
 values <- c(0:11)
@@ -114,15 +128,18 @@ shinyServer(function(input, output, session) {
   songs <- reactive({
     
     #observeEvent(input$go, {
-      if (input$username != "") {
+      if (nchar(input$username) > 7) {
         # Reading in authentication information from python scripts
         command = "/Users/eleh/anaconda/bin/python"
-        #command = "/anaconda/bin/python"
+        #command = "python"
         path2initialauth ='"initial_auth.py"'
-        song_username = paste("-u", input$username, sep=" ") #12268151
+        song_username = paste("-u", input$username, sep=" ") #122681512 #lehworthing
         authAllArgs = c(path2initialauth, c(song_username))
         authoutput = system2(command, args=authAllArgs, stdout=TRUE)
-        print(authoutput)
+        print(paste("Auth output: ", authoutput[3]))
+        output$auth <- renderUI({ 
+          HTML(paste0('<a href = "', authoutput[3], '"> Please open this link in a new tab </a>'))
+        })
       }
     
     # If user wants to get his data in real time, he will input URL
@@ -136,28 +153,92 @@ shinyServer(function(input, output, session) {
       tokenoutput = system2(command, args=retrieveAllArgs, stdout=TRUE)
       print(tokenoutput)
       
-      # Need to send this token to saved_songs.py as an argument
-      path2songs ='"saved_songs.py"'
-      song_token = paste("-t ", tokenoutput[13], sep="")
-      print(paste("Song token: ", song_token))
-      args = c(song_username, song_token)
-      songsAllArgs = c(path2songs, c(args))
-      songoutput = system2(command, args=songsAllArgs, stdout=TRUE)
-      print(paste("The Substrings are: ", songoutput))
+      # R section that will replace python section
+      access_token <- tokenoutput[12]
+      access_token <- 'BQDSdeBrOo_4cGkI8VJlPvROe2qpNFKPsHZSEkLRDDIXpnQeLFzOvYmU4_75XoapWRS2pWnySnaRdySZN_uUjR8GmlT3m7UpUv_3dNxomtZasVBJREsnxJ3sE6u9VS7kRH5y4YyuFxKW8SiHIVYeSw'
+      # print(paste('access token: ', access_token))
+      offset_val = 0; total_results = 0
+      saved_songs_df <- data.frame()
+      while (offset_val <= total_results) {
+        print(paste('offset_val: ', offset_val))
+        results <- get_saved_tracks(limit=50, offset=offset_val)
+        total_results <- results$total
+
+        i = 1;
+        while (i <= 50) {
+          print(paste('i: ', i))
+          print(results$item[[i]]$track$name)
+          name = results$item[[i]]$track$name
+          artist = results$item[[i]]$track$artists[[1]]$name
+          popularity = results$item[[i]]$track$popularity
+          track_img = results$item[[i]]$track$album$images[[1]]$url
+          # if (is.null(track_img)) { track_img = '' }
+          preview_url = results$item[[i]]$track$preview_url
+          duration_ms = results$item[[i]]$track$duration_ms
+          added_at = gsub("T.*$", "", results$item[[i]]$added_at)
+          track_id = results$item[[i]]$track$id
+
+          # Feed in track_id to get audio features
+          URI = paste0('https://api.spotify.com/v1/audio-features/', track_id)
+          headerValue = paste("Bearer", access_token)
+          request = GET(url = URI, add_headers(Authorization = headerValue))
+          json_parsed = fromJSON(content(request, "text"))
+          
+          acousticness = json_parsed$acousticness
+          danceability = json_parsed$danceability
+          energy = json_parsed$energy
+          instrumentalness = json_parsed$instrumentalness
+          key = json_parsed$key
+          liveness = json_parsed$liveness
+          loudness = json_parsed$loudness
+          speechiness = json_parsed$speechiness
+          tempo = json_parsed$tempo
+          time_signature = json_parsed$time_signature
+          valence = json_parsed$valence
+          
+          # Sometimes we encounter blank values, and in those cases we need to fill them with empty strings
+          list_of_vars = list(name, artist, popularity, acousticness, danceability, duration_ms, energy, instrumentalness, key, liveness,
+                          loudness, speechiness, tempo, time_signature, valence, added_at, preview_url, track_img)
+          list_of_vars = nullToBlank(list_of_vars)
+
+          mini_df <- data.frame(name = list_of_vars[[1]], artist = list_of_vars[[2]], popularity = list_of_vars[[3]], acousticness = list_of_vars[[4]],
+                                danceability = list_of_vars[[5]], duration_ms = list_of_vars[[6]], energy = list_of_vars[[7]], instrumentalness = list_of_vars[[8]],
+                                key = list_of_vars[[9]], liveness = list_of_vars[[10]], loudness = list_of_vars[[11]], speechiness = list_of_vars[[12]],
+                                tempo = list_of_vars[[13]], time_signature = list_of_vars[[14]], valence = list_of_vars[[15]],
+                                added_at = list_of_vars[[16]], preview_url = list_of_vars[[17]], track_img = list_of_vars[[18]])
+          print(mini_df)
+          saved_songs_df <- rbind(saved_songs_df, mini_df)
+
+          i = i + 1;
+        }
+        offset_val = offset_val + 50
+      }
+      print(saved_songs_df)
+      spotify_df <- saved_songs_df
       
-      spotify_df <- read.csv("df_saved_songs.csv")
+      # # Need to send this token to saved_songs.py as an argument
+      # path2songs ='"saved_songs.py"'
+      # song_token = paste("-t ", tokenoutput[12], sep="")
+      # print(paste("Song token: ", song_token))
+      # args = c(song_username, song_token)
+      # songsAllArgs = c(path2songs, c(args))
+      # anacommand = "/usr/bin/python"
+      # songoutput = system2(anacommand, args=songsAllArgs, stdout=TRUE)
+      # print(paste("The Substrings are: ", songoutput))
+      
+      #spotify_df <- read.csv("df_saved_songs.csv")
       print(spotify_df[1,])
       spotify_df = date_manipulations(spotify_df)
       
       # Get day of week data frame
-      dow_df <- spotify_df %>% group_by(day_added) %>% summarise(songs_added=n())
-      
+      dow_df <- spotify_df %>% group_by(day_added) %>% dplyr::summarise(songs_added=n())
+
       # Get month songs were added & most common months
       spotify_df$month_added <- months(as.Date(spotify_df$added_at))
       spotify_df$month_added <- factor(spotify_df$month_added, levels= c("January", "February", "March", "April", "May", "June",
                                                                          "July", "August", "September", "October", "November", "December"))
-      month_df <- spotify_df %>% group_by(month_added) %>% summarise(songs_added_per_month=n())
-      
+      month_df <- spotify_df %>% group_by(month_added) %>% dplyr::summarise(songs_added_per_month=n())
+
       # Map key number to major/minor key
       spotify_df$key <- keys[match(spotify_df$key, values)]
     }
@@ -211,12 +292,6 @@ shinyServer(function(input, output, session) {
     m
   })
   
-  # # Create data table of all songs for the 'Personal Attributes' tab
-  # output$spotify_df = renderDataTable({
-  #   spotify_df <- spotify_df[c("name", "artist", "key", "added_at", "day_added", "tempo", "popularity",
-  #                              "danceability", "energy", "acousticness", "instrumentalness", "speechiness")]
-  # })
-  
   output$topmood1 <- renderText({ paste0("1. ", top_moods_year_df[1,1]) })
   output$topmood2 <- renderText({ paste0("2. ", top_moods_year_df[2,1]) })
   output$topmood3 <- renderText({ paste0("3. ", top_moods_year_df[3,1]) })
@@ -234,6 +309,7 @@ shinyServer(function(input, output, session) {
     # Filter to the specific song user is hovering over
     all_songs <- isolate(songs())
     song <- all_songs[all_songs$name == x$name, ]
+    print(song$track_img)
     paste0(tags$img(src = song$track_img, width = "100px", height = "100px"),
            br(),
           "<br><b>\nSong Title: ", song$name, "</b><br>",

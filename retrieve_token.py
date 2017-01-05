@@ -3,12 +3,10 @@ import os
 from spotipy import oauth2
 import sys
 import spotipy
-import pandas as pd
+#import pandas as pd
 import json
 from datetime import date,timedelta,datetime
-#import gracenote_api
 import requests
-import lxml.etree as etree
 import itertools
 import webbrowser
 import argparse

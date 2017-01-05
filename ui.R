@@ -51,7 +51,8 @@ body <- dashboardBody(
                      fluidRow(
                        column(11,
                               box(title = "Get Your Data", status = "warning", solidHeader = TRUE, width = 1200,
-                                  textInput("username", "1. Please enter your Spotify username: "),
+                                  textInput("username", "1. Please enter your Spotify username, then navigate to the link provided: "),
+                                  a(htmlOutput("auth"), href=htmlOutput("auth"), target="_blank"),
                                   textInput("url", "2. Paste the URL that opened in your browser: ")),
                               br())),
                      fluidRow(
