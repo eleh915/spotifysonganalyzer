@@ -51,9 +51,10 @@ body <- dashboardBody(
                      fluidRow(
                        column(11,
                               box(title = "Get Your Data", status = "warning", solidHeader = TRUE, width = 1200,
-                                  textInput("username", "1. Please enter your Spotify username, then navigate to the link provided: "),
                                   a(htmlOutput("auth"), href=htmlOutput("auth"), target="_blank"),
-                                  textInput("url", "2. Paste the URL that opened in your browser: ")),
+                                  br(),
+                                  textInput("url", "2. Once you've reached the Spotify homepage, paste the full URL from your browser (it should contain a code): "),
+                                  h5(tags$b("3. Be patient while we fetch your saved songs. This may take a few minutes if your Spotify library is particularly large..."))),
                               br())),
                      fluidRow(
                        column(11,

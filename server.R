@@ -11,9 +11,27 @@ set_credentials(client_id = clientID, client_secret = secret, client_redirect_ur
 
 # FUNCTIONS --------------------------------------------------
 
+# Get user access and refresh token given user code
+get_user_token <- function(user_code){
+  
+  response <- POST('https://accounts.spotify.com/api/token', accept_json(), authenticate(clientID,secret),
+                   body=list(grant_type='authorization_code', code=user_code, redirect_uri=client_redirect_uri), encode='form')
+  content <- get_response_content(response)
+  
+  # Make accessible globally
+  assign('access_token',content$access_token,envir = .GlobalEnv)
+  assign('refresh_token',content$refresh_token,envir = .GlobalEnv)
+  
+  content
+}
+
 # Function to turn NULL values into empty strings
 nullToBlank <- function(x) {
   x[sapply(x, is.null)] <- ''
+  return(x)
+}
+nullToZero <- function(x) {
+  x[sapply(x, is.null)] <- 0
   return(x)
 }
 
@@ -79,13 +97,9 @@ prettify_df = function(df){
 
 # SAVED SONGS DATA ------------------------------------------------
 
-# Setting locale to prevent input issues and read in saved songs csv
-#Sys.setlocale('LC_ALL','C')
-#Sys.setenv(PATH = "/anaconda/bin/python")
-Sys.setenv(PATH = "/usr/local/bin")
-#print(system('which python'))
+# We probably want to start with an empty df TBH
 spotify_df <- read.csv("df_saved_songs.csv")
-print(paste("Original first row: ", spotify_df[1,]))
+#print(paste("Original first row: ", spotify_df[1,]))
 spotify_df = date_manipulations(spotify_df)
 
 dow_df <- spotify_df %>% group_by(day_added) %>% dplyr::summarise(songs_added=n())
@@ -128,51 +142,45 @@ shinyServer(function(input, output, session) {
   songs <- reactive({
     
     #observeEvent(input$go, {
-      if (nchar(input$username) > 7) {
-        # Reading in authentication information from python scripts
-        command = "/Users/eleh/anaconda/bin/python"
-        #command = "python"
-        path2initialauth ='"initial_auth.py"'
-        song_username = paste("-u", input$username, sep=" ") #122681512 #lehworthing
-        authAllArgs = c(path2initialauth, c(song_username))
-        authoutput = system2(command, args=authAllArgs, stdout=TRUE)
-        print(paste("Auth output: ", authoutput[3]))
-        output$auth <- renderUI({ 
-          HTML(paste0('<a href = "', authoutput[3], '"> Please open this link in a new tab </a>'))
-        })
-      }
-    
+
+      # Get user code for Authorization Code user code
+      response <- GET(url=authorize_url, query=list(client_id=clientID, response_type='code', scope=all_scopes, redirect_uri=client_redirect_uri))
+      navigate_url <- response$url
+
+      output$auth <- renderUI({
+        HTML(paste0('<a href = "', navigate_url, '"><b>1. Open this link in a new tab/window to log in to your Spotify account.</b> </a>'))
+      })
+
     # If user wants to get his data in real time, he will input URL
     if (input$url != "") {
-      
-      # Corresponds to retrieve_token.py - retrieve_string should come from user input from URL
-      path2retrievetoken ='"retrieve_token.py"'
-      retrieve_string = paste("-u", input$url, sep=" ")
-      print(retrieve_string)
-      retrieveAllArgs = c(path2retrievetoken, c(retrieve_string))
-      tokenoutput = system2(command, args=retrieveAllArgs, stdout=TRUE)
-      print(tokenoutput)
-      
-      # R section that will replace python section
-      access_token <- tokenoutput[12]
-      access_token <- 'BQDSdeBrOo_4cGkI8VJlPvROe2qpNFKPsHZSEkLRDDIXpnQeLFzOvYmU4_75XoapWRS2pWnySnaRdySZN_uUjR8GmlT3m7UpUv_3dNxomtZasVBJREsnxJ3sE6u9VS7kRH5y4YyuFxKW8SiHIVYeSw'
-      # print(paste('access token: ', access_token))
+
+      user_code <- str_split(input$url,pattern='code=')[[1]][2]
+      user_code <- gsub('#_=_','', user_code)
+      print(paste('user code: ', user_code))
+      access_token_outputs <- get_user_token(user_code)
+      access_token <- access_token_outputs$access_token
+      refresh_token <- access_token_outputs$refresh_token
+
+      print(paste('access token: ', access_token))
       offset_val = 0; total_results = 0
       saved_songs_df <- data.frame()
       while (offset_val <= total_results) {
+      #while (i <= 1000) {
         print(paste('offset_val: ', offset_val))
-        results <- get_saved_tracks(limit=50, offset=offset_val)
-        total_results <- results$total
+        #results <- get_saved_tracks(limit=50, offset=offset_val,access_token=access_token)
+        Sys.sleep(5)
+        results <- content(GET(url = library_url, query=list(limit=50, offset=offset_val), add_headers(Authorization=paste('Bearer',access_token))))
+        print(results)
 
         i = 1;
-        while (i <= 50) {
+        while ((results[[1]] != '7b') & (i <= (results$total %% 50))) {
+          total_results <- results$total
           print(paste('i: ', i))
           print(results$item[[i]]$track$name)
           name = results$item[[i]]$track$name
           artist = results$item[[i]]$track$artists[[1]]$name
           popularity = results$item[[i]]$track$popularity
           track_img = results$item[[i]]$track$album$images[[1]]$url
-          # if (is.null(track_img)) { track_img = '' }
           preview_url = results$item[[i]]$track$preview_url
           duration_ms = results$item[[i]]$track$duration_ms
           added_at = gsub("T.*$", "", results$item[[i]]$added_at)
@@ -196,17 +204,19 @@ shinyServer(function(input, output, session) {
           time_signature = json_parsed$time_signature
           valence = json_parsed$valence
           
-          # Sometimes we encounter blank values, and in those cases we need to fill them with empty strings
-          list_of_vars = list(name, artist, popularity, acousticness, danceability, duration_ms, energy, instrumentalness, key, liveness,
-                          loudness, speechiness, tempo, time_signature, valence, added_at, preview_url, track_img)
-          list_of_vars = nullToBlank(list_of_vars)
+          # Sometimes we encounter blank values, and in those cases we need to fill them with empty strings or 0
+          list_of_str_vars = list(name, artist, added_at, preview_url, track_img)
+          list_of_int_vars = list(popularity, acousticness, danceability, duration_ms, energy, instrumentalness, key, liveness,
+                              loudness, speechiness, tempo, time_signature, valence)
+          list_of_str_vars = nullToBlank(list_of_str_vars)
+          list_of_int_vars = nullToZero(list_of_int_vars)
 
-          mini_df <- data.frame(name = list_of_vars[[1]], artist = list_of_vars[[2]], popularity = list_of_vars[[3]], acousticness = list_of_vars[[4]],
-                                danceability = list_of_vars[[5]], duration_ms = list_of_vars[[6]], energy = list_of_vars[[7]], instrumentalness = list_of_vars[[8]],
-                                key = list_of_vars[[9]], liveness = list_of_vars[[10]], loudness = list_of_vars[[11]], speechiness = list_of_vars[[12]],
-                                tempo = list_of_vars[[13]], time_signature = list_of_vars[[14]], valence = list_of_vars[[15]],
-                                added_at = list_of_vars[[16]], preview_url = list_of_vars[[17]], track_img = list_of_vars[[18]])
-          print(mini_df)
+          mini_df <- data.frame(name = list_of_str_vars[[1]], artist = list_of_str_vars[[2]], popularity = list_of_int_vars[[1]], acousticness = list_of_int_vars[[2]],
+                                danceability = list_of_int_vars[[3]], duration_ms = list_of_int_vars[[4]], energy = list_of_int_vars[[5]], instrumentalness = list_of_int_vars[[6]],
+                                key = list_of_int_vars[[7]], liveness = list_of_int_vars[[8]], loudness = list_of_int_vars[[9]], speechiness = list_of_int_vars[[10]],
+                                tempo = list_of_int_vars[[11]], time_signature = list_of_int_vars[[12]], valence = list_of_int_vars[[13]],
+                                added_at = list_of_str_vars[[3]], preview_url = list_of_str_vars[[4]], track_img = list_of_str_vars[[5]])
+          #print(mini_df)
           saved_songs_df <- rbind(saved_songs_df, mini_df)
 
           i = i + 1;
@@ -215,16 +225,6 @@ shinyServer(function(input, output, session) {
       }
       print(saved_songs_df)
       spotify_df <- saved_songs_df
-      
-      # # Need to send this token to saved_songs.py as an argument
-      # path2songs ='"saved_songs.py"'
-      # song_token = paste("-t ", tokenoutput[12], sep="")
-      # print(paste("Song token: ", song_token))
-      # args = c(song_username, song_token)
-      # songsAllArgs = c(path2songs, c(args))
-      # anacommand = "/usr/bin/python"
-      # songoutput = system2(anacommand, args=songsAllArgs, stdout=TRUE)
-      # print(paste("The Substrings are: ", songoutput))
       
       #spotify_df <- read.csv("df_saved_songs.csv")
       print(spotify_df[1,])
