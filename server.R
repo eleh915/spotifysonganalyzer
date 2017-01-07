@@ -7,6 +7,10 @@ library(devtools)
 library(spotifyr)
 library(httr)
 
+client_redirect_uri = 'https://www.spotify.com/'
+clientID = '930456c642564135939390fde3dd06bf'
+secret = '1c7b545d45b841f9aeaee87b70d35be6'
+
 set_credentials(client_id = clientID, client_secret = secret, client_redirect_uri = client_redirect_uri)
 
 # FUNCTIONS --------------------------------------------------
@@ -97,9 +101,8 @@ prettify_df = function(df){
 
 # SAVED SONGS DATA ------------------------------------------------
 
-# We probably want to start with an empty df TBH
+# We want to start with an empty df
 spotify_df <- read.csv("df_saved_songs.csv")
-#print(paste("Original first row: ", spotify_df[1,]))
 spotify_df = date_manipulations(spotify_df)
 
 dow_df <- spotify_df %>% group_by(day_added) %>% dplyr::summarise(songs_added=n())
@@ -137,98 +140,99 @@ for (i in (1:12)) {
   #print(list_of_genre_dfs[[i]])
 }
 
+access_token <- ''
+
 shinyServer(function(input, output, session) {
   
+  # Get user code for Authorization Code user code
+  response <- GET(url=authorize_url, query=list(client_id=clientID, response_type='code', scope=all_scopes, redirect_uri=client_redirect_uri))
+  navigate_url <- response$url
+  
+  output$auth <- renderUI({
+    HTML(paste0('<a href = "', navigate_url, '"><b>1. Open this link in a new tab/window to log in to your Spotify account.</b> </a>'))
+  })
+  
   songs <- reactive({
-    
-    #observeEvent(input$go, {
-
-      # Get user code for Authorization Code user code
-      response <- GET(url=authorize_url, query=list(client_id=clientID, response_type='code', scope=all_scopes, redirect_uri=client_redirect_uri))
-      navigate_url <- response$url
-
-      output$auth <- renderUI({
-        HTML(paste0('<a href = "', navigate_url, '"><b>1. Open this link in a new tab/window to log in to your Spotify account.</b> </a>'))
-      })
 
     # If user wants to get his data in real time, he will input URL
     if (input$url != "") {
 
-      user_code <- str_split(input$url,pattern='code=')[[1]][2]
-      user_code <- gsub('#_=_','', user_code)
-      print(paste('user code: ', user_code))
-      access_token_outputs <- get_user_token(user_code)
-      access_token <- access_token_outputs$access_token
-      refresh_token <- access_token_outputs$refresh_token
-
-      print(paste('access token: ', access_token))
-      offset_val = 0; total_results = 0
-      saved_songs_df <- data.frame()
-      while (offset_val <= total_results) {
-      #while (i <= 1000) {
-        print(paste('offset_val: ', offset_val))
-        #results <- get_saved_tracks(limit=50, offset=offset_val,access_token=access_token)
-        Sys.sleep(5)
-        results <- content(GET(url = library_url, query=list(limit=50, offset=offset_val), add_headers(Authorization=paste('Bearer',access_token))))
-        print(results)
-
-        i = 1;
-        while ((results[[1]] != '7b') & (i <= (results$total %% 50))) {
-          total_results <- results$total
-          print(paste('i: ', i))
-          print(results$item[[i]]$track$name)
-          name = results$item[[i]]$track$name
-          artist = results$item[[i]]$track$artists[[1]]$name
-          popularity = results$item[[i]]$track$popularity
-          track_img = results$item[[i]]$track$album$images[[1]]$url
-          preview_url = results$item[[i]]$track$preview_url
-          duration_ms = results$item[[i]]$track$duration_ms
-          added_at = gsub("T.*$", "", results$item[[i]]$added_at)
-          track_id = results$item[[i]]$track$id
-
-          # Feed in track_id to get audio features
-          URI = paste0('https://api.spotify.com/v1/audio-features/', track_id)
-          headerValue = paste("Bearer", access_token)
-          request = GET(url = URI, add_headers(Authorization = headerValue))
-          json_parsed = fromJSON(content(request, "text"))
-          
-          acousticness = json_parsed$acousticness
-          danceability = json_parsed$danceability
-          energy = json_parsed$energy
-          instrumentalness = json_parsed$instrumentalness
-          key = json_parsed$key
-          liveness = json_parsed$liveness
-          loudness = json_parsed$loudness
-          speechiness = json_parsed$speechiness
-          tempo = json_parsed$tempo
-          time_signature = json_parsed$time_signature
-          valence = json_parsed$valence
-          
-          # Sometimes we encounter blank values, and in those cases we need to fill them with empty strings or 0
-          list_of_str_vars = list(name, artist, added_at, preview_url, track_img)
-          list_of_int_vars = list(popularity, acousticness, danceability, duration_ms, energy, instrumentalness, key, liveness,
-                              loudness, speechiness, tempo, time_signature, valence)
-          list_of_str_vars = nullToBlank(list_of_str_vars)
-          list_of_int_vars = nullToZero(list_of_int_vars)
-
-          mini_df <- data.frame(name = list_of_str_vars[[1]], artist = list_of_str_vars[[2]], popularity = list_of_int_vars[[1]], acousticness = list_of_int_vars[[2]],
-                                danceability = list_of_int_vars[[3]], duration_ms = list_of_int_vars[[4]], energy = list_of_int_vars[[5]], instrumentalness = list_of_int_vars[[6]],
-                                key = list_of_int_vars[[7]], liveness = list_of_int_vars[[8]], loudness = list_of_int_vars[[9]], speechiness = list_of_int_vars[[10]],
-                                tempo = list_of_int_vars[[11]], time_signature = list_of_int_vars[[12]], valence = list_of_int_vars[[13]],
-                                added_at = list_of_str_vars[[3]], preview_url = list_of_str_vars[[4]], track_img = list_of_str_vars[[5]])
-          #print(mini_df)
-          saved_songs_df <- rbind(saved_songs_df, mini_df)
-
-          i = i + 1;
-        }
-        offset_val = offset_val + 50
+      # Only get an access token if one does not exist already
+      if (access_token == '') {
+        user_code <- str_split(input$url,pattern='code=')[[1]][2]
+        user_code <- gsub('#_=_','', user_code)
+        print(paste('user code: ', user_code))
+        access_token_outputs <- get_user_token(user_code)
+        access_token <<- access_token_outputs$access_token # can access globally outside of reactive function
+        refresh_token <<- access_token_outputs$refresh_token
       }
-      print(saved_songs_df)
-      spotify_df <- saved_songs_df
-      
-      #spotify_df <- read.csv("df_saved_songs.csv")
-      print(spotify_df[1,])
-      spotify_df = date_manipulations(spotify_df)
+ 
+      # Only query the API if we haven't gotten the data yet
+      print('number of rows:')
+      print(nrow(spotify_df))
+      if (nrow(spotify_df) <= 1) {
+        
+        print(paste('access token: ', access_token))
+        offset_val = 0; total_results = 0
+        saved_songs_df <- data.frame()
+        while (offset_val <= total_results) {
+          print(paste('offset_val: ', offset_val))
+          Sys.sleep(5)
+          results <- content(GET(url = library_url, query=list(limit=50, offset=offset_val), add_headers(Authorization=paste('Bearer',access_token))))
+          print(results[[1]])
+  
+          i = 1;
+          while ((results[[1]] != '7b') & (i <= (results$total %% 50))) {
+            total_results <- results$total
+            name = results$item[[i]]$track$name
+            artist = results$item[[i]]$track$artists[[1]]$name
+            popularity = results$item[[i]]$track$popularity
+            track_img = results$item[[i]]$track$album$images[[1]]$url
+            preview_url = results$item[[i]]$track$preview_url
+            duration_ms = results$item[[i]]$track$duration_ms
+            added_at = gsub("T.*$", "", results$item[[i]]$added_at)
+            track_id = results$item[[i]]$track$id
+  
+            # Feed in track_id to get audio features
+            URI = paste0('https://api.spotify.com/v1/audio-features/', track_id)
+            headerValue = paste("Bearer", access_token)
+            request = GET(url = URI, add_headers(Authorization = headerValue))
+            json_parsed = fromJSON(content(request, "text"))
+            
+            acousticness = json_parsed$acousticness
+            danceability = json_parsed$danceability
+            energy = json_parsed$energy
+            instrumentalness = json_parsed$instrumentalness
+            key = json_parsed$key
+            liveness = json_parsed$liveness
+            loudness = json_parsed$loudness
+            speechiness = json_parsed$speechiness
+            tempo = json_parsed$tempo
+            time_signature = json_parsed$time_signature
+            valence = json_parsed$valence
+            
+            # Sometimes we encounter blank values, and in those cases we need to fill them with empty strings or 0
+            list_of_str_vars = list(name, artist, added_at, preview_url, track_img)
+            list_of_int_vars = list(popularity, acousticness, danceability, duration_ms, energy, instrumentalness, key, liveness,
+                                loudness, speechiness, tempo, time_signature, valence)
+            list_of_str_vars = nullToBlank(list_of_str_vars)
+            list_of_int_vars = nullToZero(list_of_int_vars)
+  
+            mini_df <- data.frame(name = list_of_str_vars[[1]], artist = list_of_str_vars[[2]], popularity = list_of_int_vars[[1]], acousticness = list_of_int_vars[[2]],
+                                  danceability = list_of_int_vars[[3]], duration_ms = list_of_int_vars[[4]], energy = list_of_int_vars[[5]], instrumentalness = list_of_int_vars[[6]],
+                                  key = list_of_int_vars[[7]], liveness = list_of_int_vars[[8]], loudness = list_of_int_vars[[9]], speechiness = list_of_int_vars[[10]],
+                                  tempo = list_of_int_vars[[11]], time_signature = list_of_int_vars[[12]], valence = list_of_int_vars[[13]],
+                                  added_at = list_of_str_vars[[3]], preview_url = list_of_str_vars[[4]], track_img = list_of_str_vars[[5]])
+            saved_songs_df <- rbind(saved_songs_df, mini_df)
+  
+            i = i + 1;
+          }
+          offset_val = offset_val + 50
+        }
+        print(saved_songs_df)
+        spotify_df <<- saved_songs_df
+      }
+      spotify_df <- date_manipulations(spotify_df)
       
       # Get day of week data frame
       dow_df <- spotify_df %>% group_by(day_added) %>% dplyr::summarise(songs_added=n())
@@ -242,12 +246,36 @@ shinyServer(function(input, output, session) {
       # Map key number to major/minor key
       spotify_df$key <- keys[match(spotify_df$key, values)]
     }
-    #})
     
     # Create data table of all songs for the 'Personal Attributes' tab
     output$spotify_df = renderDataTable({
       spotify_df <- spotify_df[c("name", "artist", "key", "added_at", "day_added", "tempo", "popularity",
                                  "danceability", "energy", "acousticness", "instrumentalness", "speechiness")]
+    })
+    
+    bar_chart <- dow_df %>% ggvis(~day_added, ~songs_added) %>% layer_bars(fill = ~factor(day_added), stroke := 'white') %>%
+      add_axis("x", title = 'Day of Week', title_offset = 100,
+               properties = axis_props(labels = list(angle = 45, align = "left", fontSize = 14), title = list(fontSize = 16))) %>%
+      add_legend("fill", title = "Day Added") %>%
+      add_axis("y", title = 'Songs Added', title_offset = 50, tick_padding=20,
+               properties = axis_props(labels = list(align = "left", fontSize = 14), title = list(fontSize = 16))) %>%
+      set_options(width = 500, height = 600, resizable=TRUE) %>%
+      bind_shiny("bar_chart")
+    
+    # Create month bar chart
+    bar_chart_month <- month_df %>% ggvis(~month_added, ~songs_added_per_month) %>% layer_bars(fill = ~factor(month_added), stroke := 'white') %>%
+      add_axis("x", title = 'Month', title_offset = 100,
+               properties = axis_props(labels = list(angle = 45, align = "left", fontSize = 14), title = list(fontSize = 16))) %>%
+      add_legend("fill", title = "Month Added") %>%
+      add_axis("y", title = 'Songs Added', title_offset = 50, tick_padding=20,
+               properties = axis_props(labels = list(align = "left", fontSize = 14), title = list(fontSize = 16))) %>%
+      set_options(width = 750, height = 600, resizable=TRUE) %>%
+      bind_shiny("bar_chart_month")
+    
+    # Calculate user hipster score by averaging out the popularity of all songs
+    hipster_score <- 100 - round(mean(spotify_df$popularity),2)
+    output$hipster_score <- renderText({
+      paste(hipster_score)
     })
     
     # Translate time sig. from how user enters it to how it's represented in the df
@@ -317,26 +345,6 @@ shinyServer(function(input, output, session) {
            tags$audio(src=song$preview_url, type = "audio/mp3", autoplay = "autoplay", controls = "controls"))
   }
   
-  # Create day-of-week bar chart
-  bar_chart <- dow_df %>% ggvis(~day_added, ~songs_added) %>% layer_bars(fill = ~factor(day_added), stroke := 'white') %>%
-    add_axis("x", title = 'Day of Week', title_offset = 100,
-             properties = axis_props(labels = list(angle = 45, align = "left", fontSize = 14), title = list(fontSize = 16))) %>%
-    add_legend("fill", title = "Day Added") %>%
-    add_axis("y", title = 'Songs Added', title_offset = 50, tick_padding=20,
-             properties = axis_props(labels = list(align = "left", fontSize = 14), title = list(fontSize = 16))) %>%
-    set_options(width = 500, height = 600, resizable=TRUE) %>%
-    bind_shiny("bar_chart")
-  
-  # Create month bar chart
-  bar_chart_month <- month_df %>% ggvis(~month_added, ~songs_added_per_month) %>% layer_bars(fill = ~factor(month_added), stroke := 'white') %>%
-    add_axis("x", title = 'Month', title_offset = 100,
-             properties = axis_props(labels = list(angle = 45, align = "left", fontSize = 14), title = list(fontSize = 16))) %>%
-    add_legend("fill", title = "Month Added") %>%
-    add_axis("y", title = 'Songs Added', title_offset = 50, tick_padding=20,
-             properties = axis_props(labels = list(align = "left", fontSize = 14), title = list(fontSize = 16))) %>%
-    set_options(width = 750, height = 600, resizable=TRUE) %>%
-    bind_shiny("bar_chart_month")
-  
   vis <- reactive({
     
     # Create graph for each month showing most common moods
@@ -402,11 +410,5 @@ shinyServer(function(input, output, session) {
   })
   
   vis %>% bind_shiny("song_plot")
-  
-  # Calculate user hipster score by averaging out the popularity of all songs
-  hipster_score <- 100 - round(mean(spotify_df$popularity),2)
-  output$hipster_score <- renderText({ 
-    paste(hipster_score)
-  })
   
 })
