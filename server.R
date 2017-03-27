@@ -137,8 +137,6 @@ list_of_genre_dfs <- list()
 for (i in (1:12)) {
   list_of_mood_dfs[[i]] <- get_month_df(mood_df, i)
   list_of_genre_dfs[[i]] <- get_month_df(genre_df, i)
-  #print(i)
-  #print(list_of_genre_dfs[[i]])
 }
 
 access_token <- ''
@@ -321,17 +319,6 @@ shinyServer(function(input, output, session) {
     m
   })
   
-  output$topmood1 <- renderText({ paste0("1. ", top_moods_year_df[1,1]) })
-  output$topmood2 <- renderText({ paste0("2. ", top_moods_year_df[2,1]) })
-  output$topmood3 <- renderText({ paste0("3. ", top_moods_year_df[3,1]) })
-  output$topmood4 <- renderText({ paste0("4. ", top_moods_year_df[4,1]) })
-  output$topmood5 <- renderText({ paste0("5. ", top_moods_year_df[5,1]) })
-  output$topgenre1 <- renderText({ paste0("1. ", top_genres_year_df[1,1]) })
-  output$topgenre2 <- renderText({ paste0("2. ", top_genres_year_df[2,1]) })
-  output$topgenre3 <- renderText({ paste0("3. ", top_genres_year_df[3,1]) })
-  output$topgenre4 <- renderText({ paste0("4. ", top_genres_year_df[4,1]) })
-  output$topgenre5 <- renderText({ paste0("5. ", top_genres_year_df[5,1]) })
-  
   # Create hovering tooltip
   song_tooltip <- function(x) {
     
@@ -347,33 +334,6 @@ shinyServer(function(input, output, session) {
   }
   
   vis <- reactive({
-    
-    # Create graph for each month showing most common moods
-    output$mood1 <- renderGvis({ gvisPieChart(list_of_mood_dfs[[1]], options=list(height=300)) })
-    output$mood2 <- renderGvis({ gvisPieChart(list_of_mood_dfs[[2]], options=list(height=300)) })
-    output$mood3 <- renderGvis({ gvisPieChart(list_of_mood_dfs[[3]], options=list(height=300)) })
-    output$mood4 <- renderGvis({ gvisPieChart(list_of_mood_dfs[[4]], options=list(height=300)) })
-    output$mood5 <- renderGvis({ gvisPieChart(list_of_mood_dfs[[5]], options=list(height=300)) })
-    output$mood6 <- renderGvis({ gvisPieChart(list_of_mood_dfs[[6]], options=list(height=300)) })
-    output$mood7 <- renderGvis({ gvisPieChart(list_of_mood_dfs[[7]], options=list(height=300)) })
-    output$mood8 <- renderGvis({ gvisPieChart(list_of_mood_dfs[[8]], options=list(height=300)) })
-    output$mood9 <- renderGvis({ gvisPieChart(list_of_mood_dfs[[9]], options=list(height=300)) })
-    output$mood10 <- renderGvis({ gvisPieChart(list_of_mood_dfs[[10]], options=list(height=300)) })
-    output$mood11 <- renderGvis({ gvisPieChart(list_of_mood_dfs[[11]], options=list(height=300)) })
-    output$mood12 <- renderGvis({ gvisPieChart(list_of_mood_dfs[[12]], options=list(height=300)) })
-    
-    output$genre1 <- renderGvis({ gvisPieChart(list_of_genre_dfs[[1]], options=list(height=300)) })
-    output$genre2 <- renderGvis({ gvisPieChart(list_of_genre_dfs[[2]], options=list(height=300)) })
-    output$genre3 <- renderGvis({ gvisPieChart(list_of_genre_dfs[[3]], options=list(height=300)) })
-    output$genre4 <- renderGvis({ gvisPieChart(list_of_genre_dfs[[4]], options=list(height=300)) })
-    output$genre5 <- renderGvis({ gvisPieChart(list_of_genre_dfs[[5]], options=list(height=300)) })
-    output$genre6 <- renderGvis({ gvisPieChart(list_of_genre_dfs[[6]], options=list(height=300)) })
-    output$genre7 <- renderGvis({ gvisPieChart(list_of_genre_dfs[[7]], options=list(height=300)) })
-    output$genre8 <- renderGvis({ gvisPieChart(list_of_genre_dfs[[8]], options=list(height=300)) })
-    output$genre9 <- renderGvis({ gvisPieChart(list_of_genre_dfs[[9]], options=list(height=300)) })
-    output$genre10 <- renderGvis({ gvisPieChart(list_of_genre_dfs[[10]], options=list(height=300)) })
-    output$genre11 <- renderGvis({ gvisPieChart(list_of_genre_dfs[[11]], options=list(height=300)) })
-    output$genre12 <- renderGvis({ gvisPieChart(list_of_genre_dfs[[12]], options=list(height=300)) })
     
     # Set axis names
     xvar_name <- names(axis_vars)[axis_vars == input$xvar]
