@@ -12,17 +12,13 @@ import itertools
 import argparse
 
 config = json.load(open('/Users/eleh/spotify/spotifysonganalyzer/api_config.json'))
-#config = json.load(open('dcm_api_config.json'))
 
 SPOTIPY_CLIENT_ID = client_id = config['spotify']['client_id']
 SPOTIPY_CLIENT_SECRET = client_secret = config['spotify']['client_secret']
-#SPOTIPY_REDIRECT_URI = redirect_uri = 'https://bitbucket.org/atandy/spotify_api'
 SPOTIPY_REDIRECT_URI = redirect_uri = 'https://eleh915.shinyapps.io/spotifysonganalyzer/'
 
 scope = 'user-library-read'
 username = '122681512'
-#username = 'daniela_manzi'
-#username = 'lehworthing'
 
 # Read in args -- if user wants to use CSV rather than querying Spotify directly
 parser = argparse.ArgumentParser(description='Command line parameters')
@@ -34,7 +30,7 @@ args = vars(parser.parse_args())
 username = args['username'][0]
 token = args['token'][0]
 print(username)
-print(token)
+rint(token)
 #token = util.prompt_for_user_token(username, scope, client_id, client_secret, redirect_uri)
 sp = spotipy.Spotify(auth=token)
 
