@@ -1,4 +1,5 @@
 library(shiny)
+library(plyr)
 library(dplyr)
 library(zoo)
 library(googleVis)
